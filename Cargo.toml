@@ -8,6 +8,4 @@ edition = "2021"
 [dependencies]
 rayon = "1.5.3"
 indicatif = {version = "0.16.2", features = ["rayon"]}
-
-[profile.release]
-debug = 1
+object-pool = "0.5.4"
