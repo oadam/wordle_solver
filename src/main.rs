@@ -123,10 +123,10 @@ fn main() {
     let mut game = Game::new(&all_scores, (0..n).collect());
     while !game.is_optimization_done() {
         game.refine_score();
-        let (guess, score) = game.get_current_best_guess();
-        println!("{}, {}", score, word_to_string(&words[guess]));
+        println!("{}", game.print_current_best_score(&words_str));
     }
     println!("{}", game.print_tree(&words_str));
+    println!("average score : {}", game.get_avg_score());
 }
 
 #[cfg(test)]

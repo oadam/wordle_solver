@@ -42,7 +42,7 @@ struct Guess<'a> {
 
 impl<'a> Ord for Guess<'a> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        return self.avg_score.partial_cmp(&other.avg_score).unwrap();
+        return other.avg_score.partial_cmp(&self.avg_score).unwrap();
     }
 }
 impl<'a> PartialOrd for Guess<'a> {
@@ -130,9 +130,16 @@ impl<'a> Game<'a> {
         }
     }
 
-    pub fn get_current_best_guess(&self) -> (Word, f64) {
-        let guess = self.get_best_guess().unwrap();
-        (guess.guess, guess.avg_score)
+    pub fn print_current_best_score(&self, words: &'a Vec<String>) -> String {
+        if let OptimizationStatus::InProgress(ref heap) = self.optimization {
+            let mut result = String::new();
+            for c in heap.iter().take(3) {
+                result.push_str(&format!("{}-{} ", words[c.guess], c.avg_score));
+            }
+            result
+        } else {
+            String::from("")
+        }
     }
 
     pub fn print_tree(&self, words: &'a Vec<String>) -> String {
@@ -170,18 +177,15 @@ impl<'a> Game<'a> {
             OptimizationStatus::InProgress(ref mut heap) => {
                 let mut guess = heap.pop().unwrap();
                 let mut new_avg_score_builder = 0.;
-                if self.words.contains(&guess.guess) {
-                    new_avg_score_builder += 1.0;
-                }
                 let mut optimization_done = true;
                 for (_, game) in guess.subgames.iter_mut() {
                     game.refine_score();
-                    new_avg_score_builder += game.words.len() as f64 * (1.0 + game.get_avg_score());
+                    new_avg_score_builder += game.words.len() as f64 * game.get_avg_score();
                     if let OptimizationStatus::InProgress(_) = game.optimization {
                         optimization_done = false;
                     }
                 }
-                guess.avg_score = new_avg_score_builder / self.words.len() as f64;
+                guess.avg_score = 1.0 + new_avg_score_builder / self.words.len() as f64;
                 guess.optimization_done = optimization_done;
                 heap.push(guess);
                 let new_best = heap.peek().unwrap();
@@ -226,7 +230,7 @@ impl<'a> Game<'a> {
                     heap.push(Guess {
                         guess: *guess,
                         subgames,
-                        avg_score: weighted_avg / self.words.len() as f64,
+                        avg_score: 1.0 + weighted_avg / self.words.len() as f64,
                         optimization_done,
                     });
                 }
