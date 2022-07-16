@@ -1,56 +1,20 @@
 mod color;
-mod score;
 mod game;
+mod score;
+mod score_cache;
+mod word;
 
+use color::Color;
 use game::Game;
 use score::Score;
-use color::Color;
 use std::env;
 use std::fs::File;
 use std::io::prelude::*;
+use word::Word;
 
-type Word = [char; 5];
+use crate::score_cache::ScoreCache;
 
-fn rate_word(solution: &Word, guess: &Word) -> Score {
-    let mut result = [Color::Black; 5];
-    let mut used = [false; 5];
-    // assign greens
-    for i in 0..5 {
-        if guess[i] == solution[i] {
-            result[i] = Color::Green;
-            used[i] = true;
-        }
-    }
-    // assign yellows
-    for i in 0..5 {
-        if result[i] == Color::Green {
-            continue;
-        }
-        for j in 0..5 {
-            if i != j && guess[i] == solution[j] && !used[j] {
-                used[j] = true;
-                result[i] = Color::Yellow;
-            }
-        }
-    }
-    Score { colors: result }
-}
-
-fn word_to_array(w: &str) -> Word {
-    let char_vec: Vec<char> = w.chars().collect();
-    let w2: Word = char_vec.try_into().expect("word does not have 5 chars");
-    return w2;
-}
-fn word_to_string(w: &Word) -> String {
-    return w.iter().collect();
-}
-
-fn load_words() -> Vec<Word> {
-    let words_iter = include_str!("solutions.txt").lines();
-    return words_iter.map(word_to_array).collect();
-}
-
-fn write_all_words(words: &Vec<String>) {
+fn write_all_words(words: &Vec<Word>) {
     let filename = "all_words.csv";
     let mut file = File::create(filename).unwrap();
     for (i, w) in words.iter().enumerate() {
@@ -61,24 +25,13 @@ fn write_all_words(words: &Vec<String>) {
 }
 
 fn write_all_scores() {
-    let colors = [Color::Black, Color::Yellow, Color::Green];
     let filename = "all_scores.csv";
     let mut scores_file = File::create(filename).unwrap();
-    for c0 in colors {
-        for c1 in colors {
-            for c2 in colors {
-                for c3 in colors {
-                    for c4 in colors {
-                        let s = Score {
-                            colors: [c0, c1, c2, c3, c4],
-                        };
-                        scores_file
-                            .write(format!("{}\t{}\n", s.to_int(), s).as_bytes())
-                            .unwrap();
-                    }
-                }
-            }
-        }
+    for code in 0..3_usize.pow(5) {
+        let score = Score { code: code as u8 };
+        scores_file
+            .write(format!("{}\t{}\n", code, score).as_bytes())
+            .unwrap();
     }
     println!("{} written !", filename);
 }
@@ -88,64 +41,37 @@ fn main() {
         panic!("expected pair number of arguments");
     }
     write_all_scores();
-    let mut words = load_words();
+    let mut words = Word::load_words();
     for n in 0..env::args().len() / 2 {
-        let word = word_to_array(&env::args().nth(2 * n + 1).unwrap());
-        let score_letters = word_to_array(&env::args().nth(2 * n + 2).unwrap());
-        let score = Score {
-            colors: score_letters.map(|c| match c {
-                'B' => Color::Black,
-                'b' => Color::Black,
-                'G' => Color::Green,
-                'g' => Color::Green,
-                'Y' => Color::Yellow,
-                'y' => Color::Yellow,
-                _ => panic!("score should contain B G or Y"),
-            }),
-        };
+        let word = Word::from_str(&env::args().nth(2 * n + 1).unwrap());
+        let score_letters = Word::from_str(&env::args().nth(2 * n + 2).unwrap());
+        let score_colors = score_letters.chars.map(|c| match c {
+            'B' => Color::Black,
+            'b' => Color::Black,
+            'G' => Color::Green,
+            'g' => Color::Green,
+            'Y' => Color::Yellow,
+            'y' => Color::Yellow,
+            _ => panic!("score should contain B G or Y"),
+        });
+        let score = Score::from_colors(score_colors);
         words = words
             .into_iter()
-            .filter(|w| rate_word(w, &word) == score)
+            .filter(|w| w.rate_guess(&word) == score)
             .collect();
     }
-    let words_str: Vec<String> = words.iter().map(word_to_string).collect();
-    write_all_words(&words_str);
+    write_all_words(&words);
 
     let n = words.len();
-    let mut all_scores: Vec<Vec<usize>> = vec![vec![0; n]; n];
-    for i in 0..n {
-        for j in 0..n {
-            all_scores[i][j] = rate_word(&words[i], &words[j]).to_int();
-        }
-    }
+    let score_cache = ScoreCache::from_words(&words);
     println!("all scores computed");
 
-    let mut game = Game::new(&all_scores, (0..n).collect());
+    let words_str = words.iter().map(|w| w.to_string()).collect();
+    let mut game = Game::new(&score_cache, (0..n as u16).collect());
     while !game.is_optimization_done() {
         game.refine_score();
         println!("{}", game.print_current_best_score(&words_str));
     }
     println!("{}", game.print_tree(&words_str));
     println!("average score : {}", game.get_avg_score());
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn rating() {
-        let solution: Word = ['a', 'b', 'a', 'd', 'c'];
-        let guess: Word = ['a', 'z', 'c', 'a', 'a'];
-        let score: Score = Score {
-            colors: [
-                Color::Green,
-                Color::Black,
-                Color::Yellow,
-                Color::Yellow,
-                Color::Black,
-            ],
-        };
-        assert_eq!(rate_word(&solution, &guess), score);
-    }
 }
