@@ -1,9 +1,11 @@
-use std::collections::{BinaryHeap, HashMap};
-use std::fmt;
+use smallvec::{smallvec, SmallVec};
+use std::collections::BinaryHeap;
+use halfbrown::HashMap;
 
 use crate::score::Score;
 
 const NON_WINNING_SCORES_COUNT: usize = (3 as usize).pow(5) - 1;
+const SMALLVEC_MAX: usize = 4;
 
 type Word = usize;
 type Solution = usize;
@@ -16,20 +18,19 @@ enum OptimizationStatus<'a> {
     Done(Guess<'a>),
 }
 
-pub struct Game<'a> {
+#[derive(Debug)]
+pub struct LargeGame<'a> {
     /// solution -> guess -> score
     all_scores: &'a Vec<Vec<ScoreInt>>,
-    words: Vec<Solution>,
+    words: SmallVec<[Solution; SMALLVEC_MAX]>,
     optimization: OptimizationStatus<'a>,
 }
 
-impl<'a> fmt::Debug for Game<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Game")
-         .field("words", &self.words)
-         .field("optimization", &self.optimization)
-         .finish()
-    }
+#[derive(Debug)]
+pub enum Game<'a> {
+    Single(usize),
+    Double(usize, usize),
+    Large(LargeGame<'a>),
 }
 
 #[derive(Debug)]
@@ -84,93 +85,107 @@ fn optimal_score(words_count: usize) -> f64 {
 }
 
 impl<'a> Game<'a> {
-    pub fn new(all_scores: &'a Vec<Vec<ScoreInt>>, words: Vec<usize>) -> Game<'a> {
-        let optimization = if words.len() == 1 {
-            OptimizationStatus::Done(Guess {
-                guess: words[0],
-                subgames: HashMap::new(),
-                avg_score: 1.,
-                optimization_done: true,
-            })
+    pub fn new(
+        all_scores: &'a Vec<Vec<ScoreInt>>,
+        words: SmallVec<[Word; SMALLVEC_MAX]>,
+    ) -> Game<'a> {
+        if words.len() == 1 {
+            Game::Single(words[0])
         } else if words.len() == 2 {
-            // optimize len 2, since there is no best strategy than playing the first word
-            let mut subgames: HashMap<ScoreInt, Game> = HashMap::new();
-            let score_if_first_guess_wrong = all_scores[words[1]][words[0]];
-            let game_if_first_guess_wrong = Game::new(all_scores, vec![words[1]]);
-            subgames.insert(score_if_first_guess_wrong, game_if_first_guess_wrong);
-            OptimizationStatus::Done(Guess {
-                guess: words[0],
-                subgames: subgames,
-                avg_score: 1.5,
-                optimization_done: true,
-            })
+            Game::Double(words[0], words[1])
         } else {
-            OptimizationStatus::Unstarted
-        };
-        return Game {
-            all_scores,
-            words,
-            optimization,
-        };
-    }
-
-    fn get_best_guess(&self) -> Option<&Guess> {
-        match &self.optimization {
-            OptimizationStatus::Done(guess) => Some(guess),
-            OptimizationStatus::InProgress(heap) => Some(heap.peek().unwrap()),
-            OptimizationStatus::Unstarted => None,
+            Game::Large(LargeGame {
+                all_scores,
+                words,
+                optimization: OptimizationStatus::Unstarted,
+            })
         }
     }
-    pub fn get_avg_score(&self) -> f64 {
-        if let Some(guess) = self.get_best_guess() {
-            guess.avg_score
-        } else {
-            optimal_score(self.words.len())
 
+    pub fn get_avg_score(&self) -> f64 {
+        match self {
+            Game::Single(_) => 1.,
+            Game::Double(_, _) => 1.5,
+            Game::Large(g) => match &g.optimization {
+                OptimizationStatus::Done(guess) => guess.avg_score,
+                OptimizationStatus::InProgress(heap) => heap.peek().unwrap().avg_score,
+                OptimizationStatus::Unstarted => optimal_score(g.words.len()),
+            },
         }
     }
 
     pub fn print_current_best_score(&self, words: &'a Vec<String>) -> String {
-        if let OptimizationStatus::InProgress(ref heap) = self.optimization {
-            let mut result = String::new();
-            for c in heap.iter().take(3) {
-                result.push_str(&format!("{}-{} ", words[c.guess], c.avg_score));
+        if let Game::Large(g) = self {
+            if let OptimizationStatus::InProgress(ref heap) = g.optimization {
+                let mut result = String::new();
+                for c in heap.iter().take(3) {
+                    result.push_str(&format!("{}-{} ", words[c.guess], c.avg_score));
+                }
+                return result;
             }
-            result
-        } else {
-            String::from("")
         }
+        String::from("optimization is over")
     }
 
     pub fn print_tree(&self, words: &'a Vec<String>) -> String {
-        if let OptimizationStatus::Done(ref guess) = self.optimization {
-            let mut lines: Vec<String> = vec![];
-            let word  = &words[guess.guess];
-            if guess.subgames.len() == 0 {
-                return word.clone() + "!";
-            }
-            for (score, sub) in guess.subgames.iter() {
-                let score_str = Score::from_int(*score).to_string();
-                for l in sub.print_tree(words).lines() {
-                    lines.push(format!("{} {} {}", word, score_str, l));
+        match self {
+            Game::Single(w) => format!("{} !", words[*w]),
+            Game::Double(w1, w2) => format!("{} or {} !", words[*w1], words[*w2]),
+            Game::Large(g) => {
+                if let OptimizationStatus::Done(ref guess) = g.optimization {
+                    let word = &words[guess.guess];
+                    if guess.subgames.len() == 0 {
+                        word.clone() + "!"
+                    } else {
+                        let mut lines: Vec<String> = vec![];
+                        for (score, sub) in guess.subgames.iter() {
+                            let score_str = Score::from_int(*score).to_string();
+                            for l in sub.print_tree(words).lines() {
+                                lines.push(format!("{} {} {}", word, score_str, l));
+                            }
+                        }
+                        lines.join("\n")
+                    }
+                } else {
+                    panic!("optimization not done")
                 }
             }
-            lines.join("\n")
-        } else {
-            panic!("optimization not done")
         }
     }
 
     pub fn is_optimization_done(&self) -> bool {
-        if let OptimizationStatus::Done(_) = self.optimization {
-            true
-        } else {
-            false
+        match self {
+            Game::Single(_) => true,
+            Game::Double(_, _) => true,
+            Game::Large(g) => {
+                if let OptimizationStatus::Done(_) = g.optimization {
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+    }
+
+    fn word_count(&self) -> usize {
+        match self {
+            Game::Single(_) => 1,
+            Game::Double(_, _) => 2,
+            Game::Large(g) => g.words.len(),
         }
     }
 
     pub fn refine_score(&mut self) {
-        match &mut self.optimization {
+        let lg = if let Game::Large(g) = self {
+            Some(g)
+        } else {
+            None
+        };
+        if lg.is_none() {
+            return;
+        }
+        let lg = lg.unwrap();
+        match &mut lg.optimization {
             OptimizationStatus::Done(_) => {
                 // nothing to do
             }
@@ -180,61 +195,57 @@ impl<'a> Game<'a> {
                 let mut optimization_done = true;
                 for (_, game) in guess.subgames.iter_mut() {
                     game.refine_score();
-                    new_avg_score_builder += game.words.len() as f64 * game.get_avg_score();
-                    if let OptimizationStatus::InProgress(_) = game.optimization {
+                    new_avg_score_builder += game.word_count() as f64 * game.get_avg_score();
+                    if !game.is_optimization_done() {
                         optimization_done = false;
                     }
                 }
-                guess.avg_score = 1.0 + new_avg_score_builder / self.words.len() as f64;
+                guess.avg_score = 1.0 + new_avg_score_builder / lg.words.len() as f64;
                 guess.optimization_done = optimization_done;
                 heap.push(guess);
                 let new_best = heap.peek().unwrap();
                 if new_best.optimization_done {
-                    self.optimization = OptimizationStatus::Done(heap.pop().unwrap());
+                    lg.optimization = OptimizationStatus::Done(heap.pop().unwrap());
                 }
             }
             OptimizationStatus::Unstarted => {
-                let mut heap: BinaryHeap<Guess> = BinaryHeap::with_capacity(self.words.len());
-                for guess in self.words.iter() {
-                    let mut words_by_score: HashMap<ScoreInt, Vec<Word>> = HashMap::new();
-                    for solution in self.words.iter() {
+                let mut heap: BinaryHeap<Guess> = BinaryHeap::with_capacity(lg.words.len());
+                for guess in lg.words.iter() {
+                    let mut words_by_score: HashMap<ScoreInt, SmallVec<[Word; SMALLVEC_MAX]>> =
+                        HashMap::new();
+                    for solution in lg.words.iter() {
                         // no subgame for winning game
                         if solution == guess {
                             continue;
                         }
-                        let score = self.all_scores[*solution][*guess];
+                        let score = lg.all_scores[*solution][*guess];
                         if let Some(entry) = words_by_score.get_mut(&score) {
                             entry.push(*solution);
                         } else {
-                            words_by_score.insert(score, vec![*solution]);
+                            let solutions = smallvec![*solution];
+                            words_by_score.insert(score, solutions);
                         }
                     }
                     let mut weighted_avg = 0.;
                     let mut subgames: HashMap<ScoreInt, Game> = HashMap::new();
+                    subgames.reserve(words_by_score.len());
                     let mut optimization_done = true;
                     for (score, solutions) in words_by_score.into_iter() {
                         weighted_avg += solutions.len() as f64 * optimal_score(solutions.len());
-                        let game = Game::new(self.all_scores, solutions);
-                        match game.optimization {
-                            OptimizationStatus::InProgress(_) => {
-                                optimization_done = false;
-                            }
-                            OptimizationStatus::Unstarted => {
-                                optimization_done = false;
-                            }
-                            OptimizationStatus::Done(_) => { //nothing
-                            }
+                        let game = Game::new(lg.all_scores, solutions);
+                        if !game.is_optimization_done() {
+                            optimization_done = false;
                         }
                         subgames.insert(score, game);
                     }
                     heap.push(Guess {
                         guess: *guess,
                         subgames,
-                        avg_score: 1.0 + weighted_avg / self.words.len() as f64,
+                        avg_score: 1.0 + weighted_avg / lg.words.len() as f64,
                         optimization_done,
                     });
                 }
-                self.optimization = OptimizationStatus::InProgress(heap);
+                lg.optimization = OptimizationStatus::InProgress(heap);
             }
         }
     }
@@ -263,7 +274,7 @@ mod tests {
     #[test]
     fn single() {
         let all_scores = vec![vec![42]];
-        let mut game = Game::new(&all_scores, vec![0]);
+        let mut game = Game::new(&all_scores, smallvec![0]);
         game.refine_score();
         assert_float_eq!(game.get_avg_score(), 1.);
     }
@@ -271,7 +282,7 @@ mod tests {
     #[test]
     fn double() {
         let all_scores = vec![vec![42, 43], vec![42, 43]];
-        let mut game = Game::new(&all_scores, vec![0, 1]);
+        let mut game = Game::new(&all_scores, smallvec![0, 1]);
         game.refine_score();
         assert_float_eq!(game.get_avg_score(), 1.5);
     }
@@ -279,7 +290,7 @@ mod tests {
     #[test]
     fn triple() {
         // TOTOR, TUTUR, MAMAM
-        let words = vec![0, 1, 2];
+        let words = smallvec![0, 1, 2];
         let all_scores = vec![vec![42, 43, 45], vec![42, 43, 45], vec![42, 43, 45]];
         let mut game = Game::new(&all_scores, words);
         game.refine_score();
