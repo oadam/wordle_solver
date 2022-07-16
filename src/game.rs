@@ -2,10 +2,11 @@ use halfbrown::HashMap;
 use smallvec::{smallvec, SmallVec};
 use std::collections::BinaryHeap;
 use std::fmt;
+use std::fmt::Write;
 
 use crate::{score::Score, score_cache::ScoreCache};
 
-const NON_WINNING_SCORES_COUNT: usize = (3 as usize).pow(5) - 1;
+const NON_WINNING_SCORES_COUNT: usize = 3_usize.pow(5) - 1;
 const SMALLVEC_MAX: usize = 4;
 
 type WordIndex = u16;
@@ -50,18 +51,18 @@ struct Guess<'a> {
 
 impl<'a> Ord for Guess<'a> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        return other.avg_score.partial_cmp(&self.avg_score).unwrap();
+        other.avg_score.partial_cmp(&self.avg_score).unwrap()
     }
 }
 impl<'a> PartialOrd for Guess<'a> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        return Some(self.cmp(other));
+        Some(self.cmp(other))
     }
 }
 impl<'a> Eq for Guess<'a> {}
 impl<'a> PartialEq for Guess<'a> {
     fn eq(&self, other: &Self) -> bool {
-        return self.guess == other.guess;
+        self.guess == other.guess
     }
 }
 
@@ -121,12 +122,12 @@ impl<'a> Game<'a> {
         }
     }
 
-    pub fn print_current_best_score(&self, words: &'a Vec<String>) -> String {
+    pub fn print_current_best_score(&self, words: &'a [String]) -> String {
         if let Game::Large(g) = self {
             if let OptimizationStatus::InProgress(ref heap) = g.optimization {
                 let mut result = String::new();
                 for c in heap.iter().take(3) {
-                    result.push_str(&format!("{}-{} ", words[c.guess as usize], c.avg_score));
+                    write!(result, "{}-{} ", words[c.guess as usize], c.avg_score).unwrap();
                 }
                 return result;
             }
@@ -134,24 +135,20 @@ impl<'a> Game<'a> {
         String::from("optimization is over")
     }
 
-    pub fn print_tree(&self, words: &'a Vec<String>) -> String {
+    pub fn print_tree(&self, words: &'a [String]) -> String {
         match self {
             Game::Single(w) => format!("{} !", words[*w as usize]),
             Game::Double(w1, w2) => format!("{} or {} !", words[*w1 as usize], words[*w2 as usize]),
             Game::Large(g) => {
                 if let OptimizationStatus::Done(ref guess) = g.optimization {
                     let word = &words[guess.guess as usize];
-                    if guess.subgames.len() == 0 {
-                        word.clone() + "!"
-                    } else {
-                        let mut lines: Vec<String> = vec![];
-                        for (score, sub) in guess.subgames.iter() {
-                            for l in sub.print_tree(words).lines() {
-                                lines.push(format!("{} {} {}", word, score, l));
-                            }
+                    let mut result = String::new();
+                    for (score, sub) in guess.subgames.iter() {
+                        for l in sub.print_tree(words).lines() {
+                            writeln!(result, "{} {} {}", word, score, l).unwrap();
                         }
-                        lines.join("\n")
                     }
+                    result
                 } else {
                     panic!("optimization not done")
                 }
@@ -164,11 +161,7 @@ impl<'a> Game<'a> {
             Game::Single(_) => true,
             Game::Double(_, _) => true,
             Game::Large(g) => {
-                if let OptimizationStatus::Done(_) = g.optimization {
-                    true
-                } else {
-                    false
-                }
+                matches!(g.optimization, OptimizationStatus::Done(_))
             }
         }
     }

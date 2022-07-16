@@ -14,11 +14,11 @@ use word::Word;
 
 use crate::score_cache::ScoreCache;
 
-fn write_all_words(words: &Vec<Word>) {
+fn write_all_words(words: &[Word]) {
     let filename = "all_words.csv";
     let mut file = File::create(filename).unwrap();
     for (i, w) in words.iter().enumerate() {
-        file.write(format!("{}\t \"{}\"\n", i, w).as_bytes())
+        file.write_all(format!("{}\t \"{}\"\n", i, w).as_bytes())
             .unwrap();
     }
     println!("{} written !", filename);
@@ -30,7 +30,7 @@ fn write_all_scores() {
     for code in 0..3_usize.pow(5) {
         let score = Score { code: code as u8 };
         scores_file
-            .write(format!("{}\t{}\n", code, score).as_bytes())
+            .write_all(format!("{}\t{}\n", code, score).as_bytes())
             .unwrap();
     }
     println!("{} written !", filename);
@@ -66,7 +66,7 @@ fn main() {
     let score_cache = ScoreCache::from_words(&words);
     println!("all scores computed");
 
-    let words_str = words.iter().map(|w| w.to_string()).collect();
+    let words_str: Vec<String> = words.iter().map(|w| w.to_string()).collect();
     let mut game = Game::new(&score_cache, (0..n as u16).collect());
     while !game.is_optimization_done() {
         game.refine_score();

@@ -19,6 +19,7 @@ impl Word {
             }
         }
         // assign yellows
+        #[allow(clippy::needless_range_loop)]
         for i in 0..5 {
             if result[i] == Color::Green {
                 continue;
@@ -39,7 +40,7 @@ impl Word {
     }
     pub fn load_words() -> Vec<Word> {
         let words_iter = include_str!("solutions.txt").lines();
-        return words_iter.map(Word::from_str).collect();
+        words_iter.map(Word::from_str).collect()
     }
 }
 

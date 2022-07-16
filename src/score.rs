@@ -1,13 +1,13 @@
 use crate::Color;
 use std::fmt;
 
-#[derive(Debug, Hash, Copy, Clone)]
+#[derive(Debug, Hash, Copy, Clone, Eq, PartialEq)]
 pub struct Score {
     pub code: u8,
 }
 impl fmt::Display for Score {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let colors = self.to_colors();
+        let colors = self.as_colors();
         write!(
             f,
             "{}{}{}{}{}",
@@ -15,16 +15,11 @@ impl fmt::Display for Score {
         )
     }
 }
-impl Eq for Score {}
-impl PartialEq for Score {
-    fn eq(&self, other: &Self) -> bool {
-        return self.code == other.code;
-    }
-}
 impl Score {
-    pub fn to_colors(&self) -> [Color; 5] {
+    pub fn as_colors(&self) -> [Color; 5] {
         let mut nn = self.code;
         let mut result = [Color::Black; 5];
+        #[allow(clippy::needless_range_loop)]
         for i in 0..5 {
             result[i] = match nn % 3 {
                 0 => Color::Black,
@@ -32,12 +27,13 @@ impl Score {
                 2 => Color::Green,
                 _ => panic!("imposible modulo"),
             };
-            nn = nn / 3;
+            nn /= 3;
         }
         result
     }
     pub fn from_colors(colors: [Color; 5]) -> Self {
         let mut result: u8 = 0;
+        #[allow(clippy::needless_range_loop)]
         for i in 0..5 {
             let score = match colors[i] {
                 Color::Black => 0,
@@ -63,6 +59,6 @@ mod tests {
             Color::Yellow,
             Color::Black,
         ];
-        assert_eq!(colors, Score::from_colors(colors).to_colors());
+        assert_eq!(colors, Score::from_colors(colors).as_colors());
     }
 }
