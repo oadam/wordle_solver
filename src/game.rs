@@ -44,7 +44,7 @@ pub enum Game<'a> {
 #[derive(Debug)]
 struct Guess<'a> {
     guess: WordIndex,
-    subgames: HashMap<Score, Game<'a>>,
+    subgames: Vec<(Score, Game<'a>)>,
     avg_score: f64,
     optimization_done: bool,
 }
@@ -226,7 +226,7 @@ impl<'a> Game<'a> {
                         }
                     }
                     let mut weighted_avg = 0.;
-                    let mut subgames: HashMap<Score, Game> = HashMap::new();
+                    let mut subgames: Vec<(Score, Game)> = vec![];
                     subgames.reserve(words_by_score.len());
                     let mut optimization_done = true;
                     for (score, solutions) in words_by_score.into_iter() {
@@ -235,7 +235,7 @@ impl<'a> Game<'a> {
                         if !game.is_optimization_done() {
                             optimization_done = false;
                         }
-                        subgames.insert(score, game);
+                        subgames.push((score, game));
                     }
                     heap.push(Guess {
                         guess: *guess,
