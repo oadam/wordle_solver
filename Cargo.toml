@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-halfbrown = "0.1.15"
+halfbrown = "0.1.18"
 smallvec = "1.9.0"
 
 [profile.release]
