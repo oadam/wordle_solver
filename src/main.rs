@@ -72,6 +72,9 @@ fn main() {
         game.refine_score();
         println!("{}", game.print_current_best_score(&words_str));
     }
-    println!("{}", game.print_tree(&words_str));
+    let filename = "result.txt";
+    let mut file = File::create(filename).unwrap();
+    file.write_all(game.print_tree(&words_str).as_bytes()).unwrap();
+    println!("{} written !", filename);
     println!("average score : {}", game.get_avg_score());
 }
