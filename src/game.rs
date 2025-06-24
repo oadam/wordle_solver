@@ -204,7 +204,7 @@ impl<'a> Game<'a> {
                 heap.push(guess);
                 let new_best = heap.peek().unwrap();
                 if new_best.optimization_done {
-                    lg.optimization = OptimizationStatus::Done(heap.pop().unwrap());
+                    lg.optimization = OptimizationStatus::Done(new_best);
                 }
             }
             OptimizationStatus::Unstarted => {
